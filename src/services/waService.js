@@ -1,13 +1,13 @@
 const fs = require('fs/promises');
 const path = require('path');
-const makeWASocket = require('@whiskeysockets/baileys').default;
+const baileys = require('@whiskeysockets/baileys');
+const makeWASocket = baileys.default;
 const {
   useMultiFileAuthState,
-  makeInMemoryStore,
   fetchLatestBaileysVersion,
   downloadMediaMessage,
   getContentType,
-} = require('@whiskeysockets/baileys');
+} = baileys;
 const Pino = require('pino');
 const QRCode = require('qrcode');
 const config = require('../config');
@@ -15,7 +15,17 @@ const { AppError } = require('../errors');
 const { setWaState, getWaSession, upsertMessageIndex } = require('../db/waRepo');
 
 const logger = Pino({ level: process.env.LOG_LEVEL || 'info' });
-const store = makeInMemoryStore({ logger: Pino({ level: 'silent' }) });
+let makeInMemoryStore = baileys.makeInMemoryStore;
+if (typeof makeInMemoryStore !== 'function') {
+  try {
+    ({ makeInMemoryStore } = require('@whiskeysockets/baileys/lib/Store'));
+  } catch {
+    makeInMemoryStore = null;
+  }
+}
+const store = typeof makeInMemoryStore === 'function'
+  ? makeInMemoryStore({ logger: Pino({ level: 'silent' }) })
+  : null;
 
 let sock = null;
 let isConnecting = false;
@@ -149,7 +159,9 @@ const connect = async () => {
   sock = makeWASocket(socketConfig);
 
   sock.ev.on('creds.update', saveCreds);
-  store.bind(sock.ev);
+  if (store && typeof store.bind === 'function') {
+    store.bind(sock.ev);
+  }
   bindMessageEvents();
 
   await setWaState({ state: 'connecting' });
@@ -198,6 +210,10 @@ const getMessage = async ({ chatId, messageId }) => {
   if (cached) return cached;
 
   try {
+    if (!store || typeof store.loadMessage !== 'function') {
+      return null;
+    }
+
     const fromStore = await store.loadMessage(chatId, messageId);
     if (fromStore) {
       cacheMessage(chatId, messageId, fromStore);
