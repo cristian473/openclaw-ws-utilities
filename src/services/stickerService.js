@@ -104,10 +104,11 @@ const importFromMessage = async ({ chatId, messageId, alias, description, tags }
   });
 };
 
-const list = async ({ q, alias, tag, page, limit, sort }) => {
+const list = async ({ q, alias, tag, sha256, page, limit, sort }) => {
   const pageNumber = Math.max(Number.parseInt(page || '1', 10), 1);
   const limitNumber = Math.min(Math.max(Number.parseInt(limit || '20', 10), 1), 100);
-  return searchStickers({ q, alias, tag, page: pageNumber, limit: limitNumber, sort });
+  const hash = sha256 ? String(sha256).trim() : undefined;
+  return searchStickers({ q, alias, tag, sha256: hash, page: pageNumber, limit: limitNumber, sort });
 };
 
 const getById = async (id) => {

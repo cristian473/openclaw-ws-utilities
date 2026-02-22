@@ -70,7 +70,7 @@ const getStickerByHash = async (sha256) => {
   return rows[0] ? mapRow(rows[0]) : null;
 };
 
-const searchStickers = async ({ q, alias, tag, page = 1, limit = 20, sort = 'created_at_desc' }) => {
+const searchStickers = async ({ q, alias, tag, sha256, page = 1, limit = 20, sort = 'created_at_desc' }) => {
   const values = [];
   const where = ['deleted_at IS NULL'];
 
@@ -88,6 +88,11 @@ const searchStickers = async ({ q, alias, tag, page = 1, limit = 20, sort = 'cre
   if (tag) {
     values.push(tag);
     where.push(`$${values.length} = ANY(tags)`);
+  }
+
+  if (sha256) {
+    values.push(sha256);
+    where.push(`LOWER(sha256) = LOWER($${values.length})`);
   }
 
   const orderBy = sort === 'created_at_asc' ? 'created_at ASC' : 'created_at DESC';
