@@ -76,12 +76,30 @@ const ensureAuthDir = async () => {
 const getDisconnectCode = (lastDisconnect) => {
   const error = lastDisconnect?.error;
   if (!error) return null;
-  return (
+  const rawCode = (
     error?.output?.statusCode ||
+    error?.output?.payload?.statusCode ||
     error?.data?.statusCode ||
+    error?.data?.attrs?.code ||
     error?.statusCode ||
     null
   );
+  const parsed = Number.parseInt(String(rawCode), 10);
+  return Number.isNaN(parsed) ? rawCode : parsed;
+};
+
+const getDisconnectConflictType = (lastDisconnect) => {
+  const error = lastDisconnect?.error;
+  if (!error) return null;
+
+  if (error?.data?.content && Array.isArray(error.data.content)) {
+    const conflictNode = error.data.content.find((item) => item?.tag === 'conflict');
+    if (conflictNode?.attrs?.type) {
+      return conflictNode.attrs.type;
+    }
+  }
+
+  return error?.data?.attrs?.type || null;
 };
 
 const bindMessageEvents = () => {
@@ -132,10 +150,19 @@ const bindMessageEvents = () => {
 
     if (connection === 'close') {
       const code = getDisconnectCode(update.lastDisconnect);
+      const conflictType = getDisconnectConflictType(update.lastDisconnect);
+      const isDeviceRemovedConflict = conflictType === 'device_removed';
       const shouldReconnect =
         !manualDisconnect &&
         code !== DisconnectReason.loggedOut &&
-        code !== DisconnectReason.badSession;
+        code !== DisconnectReason.badSession &&
+        code !== 401 &&
+        !isDeviceRemovedConflict;
+
+      logger.warn(
+        { code, conflictType, shouldReconnect },
+        'WhatsApp connection closed'
+      );
 
       sock = null;
       await setWaState({
