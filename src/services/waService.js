@@ -7,6 +7,7 @@ const {
   fetchLatestBaileysVersion,
   downloadMediaMessage,
   getContentType,
+  DisconnectReason,
 } = baileys;
 const Pino = require('pino');
 const QRCode = require('qrcode');
@@ -29,6 +30,7 @@ const store = typeof makeInMemoryStore === 'function'
 
 let sock = null;
 let isConnecting = false;
+let manualDisconnect = false;
 const messageMap = new Map();
 const MAX_MESSAGE_CACHE = 5000;
 
@@ -69,6 +71,17 @@ const hasStickerMessage = (msg) => {
 
 const ensureAuthDir = async () => {
   await fs.mkdir(path.resolve(config.baileysAuthDir), { recursive: true });
+};
+
+const getDisconnectCode = (lastDisconnect) => {
+  const error = lastDisconnect?.error;
+  if (!error) return null;
+  return (
+    error?.output?.statusCode ||
+    error?.data?.statusCode ||
+    error?.statusCode ||
+    null
+  );
 };
 
 const bindMessageEvents = () => {
@@ -118,13 +131,27 @@ const bindMessageEvents = () => {
     }
 
     if (connection === 'close') {
+      const code = getDisconnectCode(update.lastDisconnect);
+      const shouldReconnect =
+        !manualDisconnect &&
+        code !== DisconnectReason.loggedOut &&
+        code !== DisconnectReason.badSession;
+
       sock = null;
       await setWaState({
-        state: 'disconnected',
+        state: shouldReconnect ? 'connecting' : 'disconnected',
         qrText: null,
         qrExpiresAt: null,
       });
       isConnecting = false;
+
+      if (shouldReconnect) {
+        setTimeout(() => {
+          connect().catch((err) => {
+            logger.error({ err }, 'failed to reconnect WhatsApp socket');
+          });
+        }, 1200);
+      }
     }
   });
 };
@@ -134,6 +161,7 @@ const connect = async () => {
     return getWaSession();
   }
 
+  manualDisconnect = false;
   isConnecting = true;
   await ensureAuthDir();
 
@@ -169,6 +197,7 @@ const connect = async () => {
 };
 
 const disconnect = async () => {
+  manualDisconnect = true;
   if (sock) {
     try {
       if (sock.ws && typeof sock.ws.close === 'function') {
