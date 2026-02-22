@@ -178,6 +178,7 @@ const connect = async () => {
     logger,
     markOnlineOnConnect: false,
     syncFullHistory: false,
+    shouldSyncHistoryMessage: () => false,
     browser: ['Sticker API', 'Chrome', '1.0.0'],
   };
   if (version) {
