@@ -8,10 +8,26 @@ const notFoundHandler = (_req, _res, next) => {
 };
 
 const errorHandler = (err, _req, res, _next) => {
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({
+      code: 'INVALID_JSON',
+      message: 'Request body contains invalid JSON',
+      details: null,
+    });
+  }
+
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({
       code: 'FILE_TOO_LARGE',
       message: 'Uploaded file exceeds the max size limit',
+      details: null,
+    });
+  }
+
+  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({
+      code: 'INVALID_MULTIPART',
+      message: 'Unexpected multipart field. Use field name \"file\"',
       details: null,
     });
   }

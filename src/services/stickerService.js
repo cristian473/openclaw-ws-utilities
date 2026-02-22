@@ -15,6 +15,8 @@ const {
 } = require('../db/stickerRepo');
 const { saveStickerBuffer } = require('./storageService');
 const waService = require('./waService');
+const WHATSAPP_JID_REGEX = /^.+@(s\.whatsapp\.net|g\.us|lid)$/;
+const SHA256_REGEX = /^[a-f0-9]{64}$/i;
 
 const ensureUniqueAlias = async (alias, ignoreId = null) => {
   if (!alias) return;
@@ -64,6 +66,11 @@ const importFromMessage = async ({ chatId, messageId, alias, description, tags }
   if (!chatId || !messageId) {
     throw new AppError('VALIDATION_ERROR', 'chatId and messageId are required', 400);
   }
+  if (!WHATSAPP_JID_REGEX.test(String(chatId))) {
+    throw new AppError('VALIDATION_ERROR', 'chatId must be a valid WhatsApp JID', 400, {
+      chatId,
+    });
+  }
 
   const msg = await waService.getMessage({ chatId, messageId });
   if (!msg) {
@@ -105,9 +112,32 @@ const importFromMessage = async ({ chatId, messageId, alias, description, tags }
 };
 
 const list = async ({ q, alias, tag, sha256, page, limit, sort }) => {
-  const pageNumber = Math.max(Number.parseInt(page || '1', 10), 1);
-  const limitNumber = Math.min(Math.max(Number.parseInt(limit || '20', 10), 1), 100);
+  const pageRaw = page || '1';
+  const limitRaw = limit || '20';
+  const pageParsed = Number.parseInt(pageRaw, 10);
+  const limitParsed = Number.parseInt(limitRaw, 10);
+  if (Number.isNaN(pageParsed) || pageParsed < 1) {
+    throw new AppError('VALIDATION_ERROR', 'page must be an integer >= 1', 400, { page: pageRaw });
+  }
+  if (Number.isNaN(limitParsed) || limitParsed < 1 || limitParsed > 100) {
+    throw new AppError('VALIDATION_ERROR', 'limit must be an integer between 1 and 100', 400, {
+      limit: limitRaw,
+    });
+  }
+  if (sort && sort !== 'created_at_asc' && sort !== 'created_at_desc') {
+    throw new AppError('VALIDATION_ERROR', 'sort must be created_at_asc or created_at_desc', 400, {
+      sort,
+    });
+  }
+
+  const pageNumber = pageParsed;
+  const limitNumber = limitParsed;
   const hash = sha256 ? String(sha256).trim() : undefined;
+  if (hash && !SHA256_REGEX.test(hash)) {
+    throw new AppError('VALIDATION_ERROR', 'sha256 must be a 64-character hex string', 400, {
+      sha256: hash,
+    });
+  }
   return searchStickers({ q, alias, tag, sha256: hash, page: pageNumber, limit: limitNumber, sort });
 };
 
@@ -195,9 +225,25 @@ const send = async ({ toJid, selector, quotedMessageId }) => {
   if (!toJid) {
     throw new AppError('VALIDATION_ERROR', 'toJid is required', 400);
   }
+  if (!WHATSAPP_JID_REGEX.test(String(toJid))) {
+    throw new AppError('VALIDATION_ERROR', 'toJid must be a valid WhatsApp JID', 400, {
+      toJid,
+    });
+  }
 
   const sticker = await resolveSticker(selector);
-  const stickerBuffer = await fs.readFile(sticker.filePath);
+  let stickerBuffer;
+  try {
+    stickerBuffer = await fs.readFile(sticker.filePath);
+  } catch (err) {
+    if (err?.code === 'ENOENT') {
+      throw new AppError('STICKER_FILE_NOT_FOUND', 'Sticker file is missing on server storage', 404, {
+        stickerId: sticker.id,
+        filePath: sticker.filePath,
+      });
+    }
+    throw err;
+  }
 
   let quotedMessage = null;
   if (quotedMessageId) {
@@ -234,7 +280,16 @@ const send = async ({ toJid, selector, quotedMessageId }) => {
       status: 'failed',
       error: err.message,
     });
-    throw err;
+
+    if (err instanceof AppError) {
+      throw err;
+    }
+
+    throw new AppError('SEND_STICKER_FAILED', 'Failed to send sticker through WhatsApp', 502, {
+      cause: err?.message || 'unknown_error',
+      stickerId: sticker.id,
+      toJid,
+    });
   }
 };
 
