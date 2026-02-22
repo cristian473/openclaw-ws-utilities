@@ -29,4 +29,10 @@ router.post('/wa/disconnect', async (_req, res) => {
   res.json(status);
 });
 
+router.post('/wa/keepalive', async (_req, res) => {
+  const result = await waService.keepAlive();
+  const statusCode = result.state === 'connected' ? 200 : 202;
+  res.status(statusCode).json(result);
+});
+
 module.exports = router;

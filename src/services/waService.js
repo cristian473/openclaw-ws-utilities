@@ -244,6 +244,34 @@ const disconnect = async () => {
 
 const getStatus = async () => getWaSession();
 
+const keepAlive = async () => {
+  const session = await getWaSession();
+
+  if (sock && session.state === 'connected') {
+    try {
+      if (typeof sock.sendPresenceUpdate === 'function') {
+        await sock.sendPresenceUpdate('available');
+      }
+      return {
+        state: 'connected',
+        action: 'presence_ping',
+        message: 'WhatsApp session is active',
+      };
+    } catch (err) {
+      throw new AppError('WA_KEEPALIVE_FAILED', 'Failed to send keepalive presence update', 502, {
+        cause: err?.message || 'unknown_error',
+      });
+    }
+  }
+
+  await connect();
+  return {
+    state: 'connecting',
+    action: 'reconnect_started',
+    message: 'WhatsApp was not connected. Reconnection started.',
+  };
+};
+
 const getQrText = async () => {
   const session = await getWaSession();
   return {
@@ -327,6 +355,7 @@ module.exports = {
   connect,
   disconnect,
   getStatus,
+  keepAlive,
   getQrText,
   getQrPng,
   getMessage,
