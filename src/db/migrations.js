@@ -37,8 +37,17 @@ const runMigrations = async (pool) => {
   `);
 
   await pool.query(`
-    CREATE INDEX IF NOT EXISTS stickers_search_idx
-      ON stickers USING GIN (to_tsvector('simple', COALESCE(alias, '') || ' ' || COALESCE(description, '') || ' ' || array_to_string(tags, ' ')));
+    DROP INDEX IF EXISTS stickers_search_idx;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS stickers_alias_idx
+      ON stickers (alias);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS stickers_tags_idx
+      ON stickers USING GIN (tags);
   `);
 
   await pool.query(`

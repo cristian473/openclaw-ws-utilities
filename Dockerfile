@@ -27,11 +27,11 @@ RUN apk add --no-cache git
 COPY package.json ./
 RUN npm install --omit=dev && npm cache clean --force
 
-COPY src ./src
-COPY index.js ./
-COPY .env.example ./
+COPY --chown=node:node src ./src
+COPY --chown=node:node index.js ./
+COPY --chown=node:node .env.example ./
 
-RUN mkdir -p /app/storage/stickers /app/storage/baileys-auth && chown -R node:node /app
+RUN mkdir -p /app/storage/stickers /app/storage/baileys-auth && chown -R node:node /app/storage
 
 USER node
 
